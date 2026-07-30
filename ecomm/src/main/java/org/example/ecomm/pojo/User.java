@@ -1,26 +1,37 @@
 package org.example.ecomm.pojo;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.*;
 
+import java.util.Collection;
 import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
+import org.hibernate.annotations.NaturalId;
 
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
 @Entity
-@Data
 public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
-
-    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    private String firstName;
+    private String lastName;
+    @NaturalId
+    private String email;
     private String password;
 
-    private String email;
-    private String fullName;
-    private String mobile;
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Cart cart;
 
-    @OneToMany
-    private Set<Address> addresses = new HashSet<>();
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Order> orders;
+
+    @ManyToMany(fetch = FetchType.EAGER, cascade =
+            {CascadeType.DETACH, CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REFRESH})
+    @JoinTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id", referencedColumnName = "id"),
+            inverseJoinColumns = @JoinColumn(name = "role_id", referencedColumnName = "id"))
+    private Collection<Role> roles = new HashSet<>();
 }
