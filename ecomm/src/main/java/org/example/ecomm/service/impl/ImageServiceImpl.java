@@ -16,12 +16,15 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 
 @Service
 @RequiredArgsConstructor
 public class ImageServiceImpl implements ImageService {
     private final ImageRepository imageRepository;
     private final ProductService productService;
+    private final ExecutorService imageUploadExecutor;
 
     @Override
     public Image getImageById(Long id) {
@@ -35,37 +38,71 @@ public class ImageServiceImpl implements ImageService {
         });
     }
 
+//    @Override
+//    public List<ImageDto> saveImages(List<MultipartFile> files, Long productId) {
+//        Product product = productService.getProductById(productId);
+//
+//        List<ImageDto> savedImageDtos = new ArrayList<>();
+//        for (MultipartFile file: files) {
+//            try {
+//                Image image = new Image();
+//                image.setFileName(file.getOriginalFilename());
+//                image.setFileType(file.getContentType());
+//                image.setImage(new SerialBlob(file.getBytes()));
+//                image.setProduct(product);
+//
+//                String buildDownloadUrl = "/api/v1/images/image/download/";
+//                String downloadUrl = buildDownloadUrl + image.getId();
+//                image.setDownloadUrl(downloadUrl);
+//                Image savedImage = imageRepository.save(image);
+//                savedImage.setDownloadUrl(buildDownloadUrl + savedImage.getId());
+//                imageRepository.save(savedImage);
+//
+//                ImageDto imageDto = new ImageDto();
+//                imageDto.setId(savedImage.getId());
+//                imageDto.setFileName(savedImage.getFileName());
+//                imageDto.setDownloadUrl(savedImage.getDownloadUrl());
+//                savedImageDtos.add(imageDto);
+//
+//            } catch (IOException | SQLException e) {
+//                throw new RuntimeException(e);
+//            }
+//        }
+//        return savedImageDtos;
+//    }
     @Override
     public List<ImageDto> saveImages(List<MultipartFile> files, Long productId) {
         Product product = productService.getProductById(productId);
 
-        List<ImageDto> savedImageDtos = new ArrayList<>();
-        for (MultipartFile file: files) {
-            try {
-                Image image = new Image();
-                image.setFileName(file.getOriginalFilename());
-                image.setFileType(file.getContentType());
-                image.setImage(new SerialBlob(file.getBytes()));
-                image.setProduct(product);
+        List<CompletableFuture<ImageDto>> futures = files.stream()
+                .map(file -> CompletableFuture.supplyAsync(
+                        () -> saveOneImage(file, product), imageUploadExecutor))
+                .toList();
 
-                String buildDownloadUrl = "/api/v1/images/image/download/";
-                String downloadUrl = buildDownloadUrl + image.getId();
-                image.setDownloadUrl(downloadUrl);
-                Image savedImage = imageRepository.save(image);
-                savedImage.setDownloadUrl(buildDownloadUrl + savedImage.getId());
-                imageRepository.save(savedImage);
+        return futures.stream().map(CompletableFuture::join).toList();
+    }
 
-                ImageDto imageDto = new ImageDto();
-                imageDto.setId(savedImage.getId());
-                imageDto.setFileName(savedImage.getFileName());
-                imageDto.setDownloadUrl(savedImage.getDownloadUrl());
-                savedImageDtos.add(imageDto);
 
-            } catch (IOException | SQLException e) {
-                throw new RuntimeException(e);
-            }
+    private ImageDto saveOneImage(MultipartFile file, Product product) {
+        try {
+            Image image = new Image();
+            image.setFileName(file.getOriginalFilename());
+            image.setFileType(file.getContentType());
+            image.setImage(new SerialBlob(file.getBytes()));
+            image.setProduct(product);
+
+            Image savedImage = imageRepository.save(image);
+            savedImage.setDownloadUrl("/api/v1/images/image/download/" + savedImage.getId());
+            imageRepository.save(savedImage);
+
+            ImageDto imageDto = new ImageDto();
+            imageDto.setId(savedImage.getId());
+            imageDto.setFileName(savedImage.getFileName());
+            imageDto.setDownloadUrl(savedImage.getDownloadUrl());
+            return imageDto;
+        } catch (IOException | SQLException e) {
+            throw new RuntimeException(e);
         }
-        return savedImageDtos;
     }
 
     @Override
