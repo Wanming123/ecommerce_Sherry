@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.example.ecomm.Enums.OrderStatus;
 import org.example.ecomm.dto.OrderDto;
+import org.example.ecomm.dto.OrderPlacedEvent;
 import org.example.ecomm.exception.ResourceNotFoundException;
 import org.example.ecomm.pojo.Cart;
 import org.example.ecomm.pojo.Order;
@@ -14,6 +15,7 @@ import org.example.ecomm.repository.ProductRepository;
 import org.example.ecomm.service.CartService;
 import org.example.ecomm.service.OrderService;
 import org.modelmapper.ModelMapper;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -28,6 +30,7 @@ public class OrderServiceImpl implements OrderService {
     private final ProductRepository productRepository;
     private final CartService cartService;
     private final ModelMapper modelMapper;
+    private final KafkaTemplate<String, OrderPlacedEvent> kafkaTemplate;
 
     @Transactional
     @Override
@@ -39,6 +42,8 @@ public class OrderServiceImpl implements OrderService {
         order.setTotalAmount(calculateTotalAmount(orderItemList));
         Order savedOrder = orderRepository.save(order);
         cartService.clearCart(cart.getId());
+        kafkaTemplate.send("order-placed", savedOrder.getOrderId().toString(),
+                new OrderPlacedEvent(savedOrder.getOrderId(), userId, savedOrder.getTotalAmount()));
         return savedOrder;
     }
 
