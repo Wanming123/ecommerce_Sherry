@@ -1,7 +1,7 @@
 package org.example.ecomm.service;
 
+import org.example.ecomm.dto.CartCheckoutDto;
 import org.example.ecomm.pojo.Cart;
-import org.example.ecomm.pojo.User;
 
 import java.math.BigDecimal;
 
@@ -10,7 +10,9 @@ public interface CartService {
     void clearCart(Long id);
     BigDecimal getTotalPrice(Long id);
 
-    Cart initializeNewCart(User user);
+    Cart initializeNewCart(Long userId);
 
     Cart getCartByUserId(Long userId);
+
+    CartCheckoutDto getCheckoutCart(Long userId);
 }

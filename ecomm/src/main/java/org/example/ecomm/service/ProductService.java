@@ -24,4 +24,6 @@ public interface ProductService {
 
     List<ProductDto> getConvertedProducts(List<Product> products);
     ProductDto convertToDto(Product product);
+
+    void decreaseInventory(Long productId, int quantity);
 }

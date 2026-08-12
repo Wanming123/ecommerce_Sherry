@@ -1,6 +1,7 @@
 package org.example.ecomm.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.example.ecomm.dto.CartCheckoutDto;
 import org.example.ecomm.dto.response.ApiResponse;
 import org.example.ecomm.exception.ResourceNotFoundException;
 import org.example.ecomm.pojo.Cart;
@@ -47,6 +48,17 @@ public class CartController {
         try {
             BigDecimal totalPrice = cartService.getTotalPrice(cartId);
             return ResponseEntity.ok(new ApiResponse("Total Price", totalPrice));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(NOT_FOUND).body(new ApiResponse(e.getMessage(), null));
+        }
+    }
+
+    // Consumed by order-service (via Eureka) when placing an order.
+    @GetMapping("/user/{userId}/checkout-cart")
+    public ResponseEntity<ApiResponse> getCheckoutCart(@PathVariable Long userId) {
+        try {
+            CartCheckoutDto cart = cartService.getCheckoutCart(userId);
+            return ResponseEntity.ok(new ApiResponse("Success", cart));
         } catch (ResourceNotFoundException e) {
             return ResponseEntity.status(NOT_FOUND).body(new ApiResponse(e.getMessage(), null));
         }

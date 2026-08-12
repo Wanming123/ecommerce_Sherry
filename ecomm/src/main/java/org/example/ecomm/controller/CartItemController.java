@@ -4,11 +4,10 @@ import lombok.RequiredArgsConstructor;
 import org.example.ecomm.dto.response.ApiResponse;
 import org.example.ecomm.exception.ResourceNotFoundException;
 import org.example.ecomm.pojo.Cart;
-import org.example.ecomm.pojo.User;
 import org.example.ecomm.service.CartItemService;
 import org.example.ecomm.service.CartService;
-import org.example.ecomm.service.UserService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,15 +19,14 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 public class CartItemController {
     private final CartItemService cartItemService;
     private final CartService cartService;
-    private final UserService userService;
 
     @PostMapping("/item/add")
     public ResponseEntity<ApiResponse> addItemToCart(@RequestParam(required = false) Long cartId,
                                                      @RequestParam Long productId,
                                                      @RequestParam Integer quantity) {
         try {
-            User user = userService.getAuthenticatedUser();
-            Cart cart = cartService.initializeNewCart(user);
+            Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            Cart cart = cartService.initializeNewCart(userId);
             cartItemService.addItemToCart(cart.getId(), productId, quantity);
             return ResponseEntity.ok(new ApiResponse("Add Item Success", null));
         } catch (ResourceNotFoundException e) {

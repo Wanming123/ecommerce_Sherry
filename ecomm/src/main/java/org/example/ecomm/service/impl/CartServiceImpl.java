@@ -1,9 +1,10 @@
 package org.example.ecomm.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.ecomm.dto.CartCheckoutDto;
+import org.example.ecomm.dto.CartCheckoutItemDto;
 import org.example.ecomm.exception.ResourceNotFoundException;
 import org.example.ecomm.pojo.Cart;
-import org.example.ecomm.pojo.User;
 import org.example.ecomm.repository.CartItemRepository;
 import org.example.ecomm.repository.CartRepository;
 import org.example.ecomm.service.CartService;
@@ -45,11 +46,11 @@ public class CartServiceImpl implements CartService {
     }
 
     @Override
-    public Cart initializeNewCart(User user) {
-        return Optional.ofNullable(getCartByUserId(user.getId()))
+    public Cart initializeNewCart(Long userId) {
+        return Optional.ofNullable(getCartByUserId(userId))
                 .orElseGet(() -> {
                     Cart cart = new Cart();
-                    cart.setUser(user);
+                    cart.setUserId(userId);
                     return cartRepository.save(cart);
                 });
     }
@@ -57,5 +58,19 @@ public class CartServiceImpl implements CartService {
     @Override
     public Cart getCartByUserId(Long userId) {
         return cartRepository.findByUserId(userId);
+    }
+
+    @Override
+    public CartCheckoutDto getCheckoutCart(Long userId) {
+        Cart cart = Optional.ofNullable(getCartByUserId(userId))
+                .orElseThrow(() -> new ResourceNotFoundException("Cart not found for user " + userId));
+        var items = cart.getItems().stream()
+                .map(item -> new CartCheckoutItemDto(
+                        item.getProduct().getId(),
+                        item.getProduct().getName(),
+                        item.getQuantity(),
+                        item.getUnitPrice()))
+                .toList();
+        return new CartCheckoutDto(cart.getId(), items);
     }
 }

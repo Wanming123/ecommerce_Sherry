@@ -124,4 +124,11 @@ public class ProductServiceImpl implements ProductService {
         productDto.setImages(imageDtos);
         return productDto;
     }
+
+    @Override
+    public void decreaseInventory(Long productId, int quantity) {
+        Product product = getProductById(productId);
+        product.setInventory(product.getInventory() - quantity);
+        productRepository.save(product);
+    }
 }

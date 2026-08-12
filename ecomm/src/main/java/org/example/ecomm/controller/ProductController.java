@@ -156,5 +156,14 @@ public class ProductController {
         }
     }
 
-
+    // Consumed by order-service (via Eureka) when placing an order.
+    @PostMapping("/product/{productId}/decrease-inventory")
+    public ResponseEntity<ApiResponse> decreaseInventory(@PathVariable Long productId, @RequestParam int quantity) {
+        try {
+            productService.decreaseInventory(productId, quantity);
+            return ResponseEntity.ok(new ApiResponse("Inventory updated", null));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(NOT_FOUND).body(new ApiResponse(e.getMessage(), null));
+        }
+    }
 }
