@@ -23,6 +23,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +35,7 @@ public class OrderServiceImpl implements OrderService {
     private final ModelMapper modelMapper;
     private final KafkaTemplate<String, OrderPlacedEvent> kafkaTemplate;
     private final RestTemplate restTemplate;
+    private final ExecutorService inventoryUpdateExecutor;
 
     @Transactional
     @Override
@@ -78,15 +81,13 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private List<OrderItem> createOrderItems(Order order, CartCheckoutResponse cart) {
-        return cart.getItems().stream().map(item -> {
-            decreaseRemoteInventory(item.getProductId(), item.getQuantity());
-            return new OrderItem(
-                    order,
-                    item.getProductId(),
-                    item.getProductName(),
-                    item.getQuantity(),
-                    item.getUnitPrice());
-        }).toList();
+        List<CompletableFuture<OrderItem>> futures = cart.getItems().stream().map(
+                item -> CompletableFuture.supplyAsync(() -> {
+                    decreaseRemoteInventory(item.getProductId(), item.getQuantity());
+                    return new OrderItem(order, item.getProductId(), item.getProductName(), item.getQuantity(), item.getUnitPrice());
+                }, inventoryUpdateExecutor)
+        ).toList();
+        return futures.stream().map(CompletableFuture::join).toList();
     }
 
     private BigDecimal calculateTotalAmount(List<OrderItem> orderItemList) {
