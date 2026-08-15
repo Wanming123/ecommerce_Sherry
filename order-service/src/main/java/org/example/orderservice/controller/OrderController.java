@@ -8,6 +8,7 @@ import org.example.orderservice.pojo.Order;
 import org.example.orderservice.service.OrderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,9 +20,10 @@ public class OrderController {
     private final OrderService orderService;
 
     @PostMapping("/order")
-    public ResponseEntity<ApiResponse> createOrder(@RequestParam Long userId) {
+    public ResponseEntity<ApiResponse> createOrder(@RequestHeader("Authorization") String authHeader) {
         try {
-            Order order =  orderService.placeOrder(userId);
+            Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            Order order = orderService.placeOrder(userId, authHeader);
             OrderDto orderDto =  orderService.convertToDto(order);
             return ResponseEntity.ok(new ApiResponse("Item Order Success!", orderDto));
         } catch (Exception e) {

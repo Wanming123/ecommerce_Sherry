@@ -35,3 +35,8 @@ eureka:
 
 api:
   prefix: /api/v1
+
+auth:
+  token:
+    jwtSecret: J6RzYiFgcFSOQazw7IZr0HVqM6r7SGPJ3Ke3OeuV7sg=
+    expirationInMils: 86400000

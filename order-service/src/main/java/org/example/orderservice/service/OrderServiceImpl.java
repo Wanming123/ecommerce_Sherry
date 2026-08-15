@@ -13,6 +13,8 @@ import org.example.orderservice.pojo.OrderItem;
 import org.example.orderservice.repository.OrderRepository;
 import org.modelmapper.ModelMapper;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -39,23 +41,29 @@ public class OrderServiceImpl implements OrderService {
 
     @Transactional
     @Override
-    public Order placeOrder(Long userId) {
-        CartCheckoutResponse cart = fetchCheckoutCart(userId);
+    public Order placeOrder(Long userId, String authHeader) {
+        CartCheckoutResponse cart = fetchCheckoutCart(userId, authHeader);
         Order order = createOrder(userId);
         List<OrderItem> orderItemList = createOrderItems(order, cart);
         order.setOrderItems(new HashSet<>(orderItemList));
         order.setTotalAmount(calculateTotalAmount(orderItemList));
         Order savedOrder = orderRepository.save(order);
-        clearRemoteCart(cart.getCartId());
+        clearRemoteCart(cart.getCartId(), authHeader);
         kafkaTemplate.send("order-placed", savedOrder.getOrderId().toString(),
                 new OrderPlacedEvent(savedOrder.getOrderId(), userId, savedOrder.getTotalAmount()));
         return savedOrder;
     }
 
-    private CartCheckoutResponse fetchCheckoutCart(Long userId) {
+    private HttpEntity<Void> authEntity(String authHeader) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.AUTHORIZATION, authHeader);
+        return new HttpEntity<>(headers);
+    }
+
+    private CartCheckoutResponse fetchCheckoutCart(Long userId, String authHeader) {
         String url = ECOMM_BASE_URL + "/carts/user/" + userId + "/checkout-cart";
         ResponseEntity<ApiResponseWrapper<CartCheckoutResponse>> response = restTemplate.exchange(
-                url, HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+                url, HttpMethod.GET, authEntity(authHeader), new ParameterizedTypeReference<>() {});
         CartCheckoutResponse body = response.getBody() == null ? null : response.getBody().getData();
         if (body == null) {
             throw new ResourceNotFoundException("Cart not found for user " + userId);
@@ -63,8 +71,9 @@ public class OrderServiceImpl implements OrderService {
         return body;
     }
 
-    private void clearRemoteCart(Long cartId) {
-        restTemplate.delete(ECOMM_BASE_URL + "/carts/" + cartId + "/clear");
+    private void clearRemoteCart(Long cartId, String authHeader) {
+        restTemplate.exchange(ECOMM_BASE_URL + "/carts/" + cartId + "/clear",
+                HttpMethod.DELETE, authEntity(authHeader), Void.class);
     }
 
     private void decreaseRemoteInventory(Long productId, int quantity) {
