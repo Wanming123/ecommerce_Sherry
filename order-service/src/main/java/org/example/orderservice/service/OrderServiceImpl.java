@@ -3,8 +3,8 @@ package org.example.orderservice.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.example.orderservice.Enums.OrderStatus;
-import org.example.orderservice.client.ApiResponseWrapper;
 import org.example.orderservice.client.CartCheckoutResponse;
+import org.example.orderservice.client.EcommClient;
 import org.example.orderservice.dto.OrderDto;
 import org.example.orderservice.dto.OrderPlacedEvent;
 import org.example.orderservice.exception.ResourceNotFoundException;
@@ -12,14 +12,8 @@ import org.example.orderservice.pojo.Order;
 import org.example.orderservice.pojo.OrderItem;
 import org.example.orderservice.repository.OrderRepository;
 import org.modelmapper.ModelMapper;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -31,12 +25,11 @@ import java.util.concurrent.ExecutorService;
 @Service
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
-    private static final String ECOMM_BASE_URL = "http://ecomm/api/v1";
 
     private final OrderRepository orderRepository;
     private final ModelMapper modelMapper;
     private final KafkaTemplate<String, OrderPlacedEvent> kafkaTemplate;
-    private final RestTemplate restTemplate;
+    private final EcommClient ecommClient;
     private final ExecutorService inventoryUpdateExecutor;
 
     @Transactional
@@ -48,37 +41,18 @@ public class OrderServiceImpl implements OrderService {
         order.setOrderItems(new HashSet<>(orderItemList));
         order.setTotalAmount(calculateTotalAmount(orderItemList));
         Order savedOrder = orderRepository.save(order);
-        clearRemoteCart(cart.getCartId(), authHeader);
+        ecommClient.clearCart(cart.getCartId(), authHeader);
         kafkaTemplate.send("order-placed", savedOrder.getOrderId().toString(),
                 new OrderPlacedEvent(savedOrder.getOrderId(), userId, savedOrder.getTotalAmount()));
         return savedOrder;
     }
 
-    private HttpEntity<Void> authEntity(String authHeader) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.AUTHORIZATION, authHeader);
-        return new HttpEntity<>(headers);
-    }
-
     private CartCheckoutResponse fetchCheckoutCart(Long userId, String authHeader) {
-        String url = ECOMM_BASE_URL + "/carts/user/" + userId + "/checkout-cart";
-        ResponseEntity<ApiResponseWrapper<CartCheckoutResponse>> response = restTemplate.exchange(
-                url, HttpMethod.GET, authEntity(authHeader), new ParameterizedTypeReference<>() {});
-        CartCheckoutResponse body = response.getBody() == null ? null : response.getBody().getData();
-        if (body == null) {
+        CartCheckoutResponse cart = ecommClient.fetchCheckoutCart(userId, authHeader);
+        if (cart == null) {
             throw new ResourceNotFoundException("Cart not found for user " + userId);
         }
-        return body;
-    }
-
-    private void clearRemoteCart(Long cartId, String authHeader) {
-        restTemplate.exchange(ECOMM_BASE_URL + "/carts/" + cartId + "/clear",
-                HttpMethod.DELETE, authEntity(authHeader), Void.class);
-    }
-
-    private void decreaseRemoteInventory(Long productId, int quantity) {
-        String url = ECOMM_BASE_URL + "/products/product/" + productId + "/decrease-inventory?quantity=" + quantity;
-        restTemplate.postForObject(url, null, ApiResponseWrapper.class);
+        return cart;
     }
 
     private Order createOrder(Long userId) {
@@ -92,7 +66,7 @@ public class OrderServiceImpl implements OrderService {
     private List<OrderItem> createOrderItems(Order order, CartCheckoutResponse cart) {
         List<CompletableFuture<OrderItem>> futures = cart.getItems().stream().map(
                 item -> CompletableFuture.supplyAsync(() -> {
-                    decreaseRemoteInventory(item.getProductId(), item.getQuantity());
+                    ecommClient.decreaseInventory(item.getProductId(), item.getQuantity());
                     return new OrderItem(order, item.getProductId(), item.getProductName(), item.getQuantity(), item.getUnitPrice());
                 }, inventoryUpdateExecutor)
         ).toList();
