@@ -1,9 +1,8 @@
 package org.example.orderservice.security.config;
 
 import lombok.RequiredArgsConstructor;
-import org.example.orderservice.security.jwt.AuthTokenFilter;
+import org.example.orderservice.security.gateway.GatewayAuthHeaderFilter;
 import org.example.orderservice.security.jwt.JwtAuthEntryPoint;
-import org.example.orderservice.security.jwt.JwtUtils;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -14,19 +13,19 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Placing/viewing orders now requires a valid JWT - order-service forwards the same
- * token when it calls ecomm's protected /carts/** endpoints (see OrderServiceImpl).
+ * Placing/viewing orders requires an authenticated caller, but the JWT itself is now verified
+ * once at api-gateway - order-service just trusts the identity it forwards (see
+ * GatewayAuthHeaderFilter). This assumes order-service is unreachable except through the gateway.
  */
 @RequiredArgsConstructor
 @EnableWebSecurity
 @Configuration
 public class SecurityConfig {
-    private final JwtUtils jwtUtils;
     private final JwtAuthEntryPoint authEntryPoint;
 
     @Bean
-    public AuthTokenFilter authTokenFilter() {
-        return new AuthTokenFilter(jwtUtils);
+    public GatewayAuthHeaderFilter gatewayAuthHeaderFilter() {
+        return new GatewayAuthHeaderFilter();
     }
 
     @Bean
@@ -36,7 +35,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth.requestMatchers("/api/v1/orders/**").authenticated()
                         .anyRequest().permitAll());
-        http.addFilterBefore(authTokenFilter(), UsernamePasswordAuthenticationFilter.class);
+        http.addFilterBefore(gatewayAuthHeaderFilter(), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }

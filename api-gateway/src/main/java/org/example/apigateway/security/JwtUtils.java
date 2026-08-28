@@ -1,4 +1,4 @@
-package org.example.orderservice.security.jwt;
+package org.example.apigateway.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
@@ -11,8 +11,9 @@ import java.security.Key;
 import java.util.List;
 
 /**
- * Validates the JWT issued by user-service, reading identity straight from its claims -
- * order-service has no User table to look the principal up in either. Mirrors ecomm's JwtUtils.
+ * Validates the JWT issued by user-service. This is the only place in the system that still
+ * verifies the signature - downstream services trust the identity api-gateway forwards
+ * instead of re-parsing the token themselves (see JwtAuthFilterFunction).
  */
 @Component
 public class JwtUtils {
@@ -30,7 +31,7 @@ public class JwtUtils {
             return true;
         } catch (ExpiredJwtException | UnsupportedJwtException | MalformedJwtException | SignatureException
                  | IllegalArgumentException e) {
-            throw new JwtException(e.getMessage());
+            return false;
         }
     }
 
