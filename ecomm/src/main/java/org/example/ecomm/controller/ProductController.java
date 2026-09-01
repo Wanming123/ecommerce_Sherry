@@ -166,4 +166,16 @@ public class ProductController {
             return ResponseEntity.status(NOT_FOUND).body(new ApiResponse(e.getMessage(), null));
         }
     }
+
+    // Compensating action for order-service's checkout saga - restores inventory
+    // previously decreased via decrease-inventory when order placement fails downstream.
+    @PostMapping("/product/{productId}/increase-inventory")
+    public ResponseEntity<ApiResponse> increaseInventory(@PathVariable Long productId, @RequestParam int quantity) {
+        try {
+            productService.increaseInventory(productId, quantity);
+            return ResponseEntity.ok(new ApiResponse("Inventory restored", null));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(NOT_FOUND).body(new ApiResponse(e.getMessage(), null));
+        }
+    }
 }

@@ -26,4 +26,5 @@ public interface ProductService {
     ProductDto convertToDto(Product product);
 
     void decreaseInventory(Long productId, int quantity);
+    void increaseInventory(Long productId, int quantity);
 }

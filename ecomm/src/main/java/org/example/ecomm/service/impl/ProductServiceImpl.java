@@ -131,4 +131,11 @@ public class ProductServiceImpl implements ProductService {
         product.setInventory(product.getInventory() - quantity);
         productRepository.save(product);
     }
+
+    @Override
+    public void increaseInventory(Long productId, int quantity) {
+        Product product = getProductById(productId);
+        product.setInventory(product.getInventory() + quantity);
+        productRepository.save(product);
+    }
 }
