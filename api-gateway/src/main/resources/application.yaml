@@ -13,3 +13,11 @@ eureka:
 auth:
   token:
     jwtSecret: J6RzYiFgcFSOQazw7IZr0HVqM6r7SGPJ3Ke3OeuV7sg=
+
+resilience4j:
+  ratelimiter:
+    configs:
+      perClient:
+        limit-for-period: 20
+        limit-refresh-period: 1s
+        timeout-duration: 0s
