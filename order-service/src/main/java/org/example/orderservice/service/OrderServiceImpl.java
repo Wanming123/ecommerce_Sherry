@@ -50,8 +50,7 @@ public class OrderServiceImpl implements OrderService {
 
             clearCartBestEffort(cart.getCartId(), authHeader);
 
-            kafkaTemplate.send("order-placed", savedOrder.getOrderId().toString(),
-                    new OrderPlacedEvent(savedOrder.getOrderId(), userId, savedOrder.getTotalAmount()));
+            kafkaTemplate.send("order-placed", savedOrder.getOrderId().toString(), OrderPlacedEvent.of(savedOrder));
             return savedOrder;
         } catch (Exception ex) {
             compensateInventory(reservedItems);

@@ -8,10 +8,10 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 public class OrderEventListener {
-
     @KafkaListener(topics = "order-placed", groupId = "order-service-notification")
     public void onOrderPlaced(OrderPlacedEvent event) {
-        log.info("Order placed event received: orderId={}, userId={}, totalAmount={}",
-                event.orderId(), event.userId(), event.totalAmount());
+        log.info("Order placed event received: eventType={}, orderId={}, userId={}, totalAmount={}, status={}, items={}",
+                event.eventType(), event.orderId(), event.userId(), event.totalAmount(),
+                event.orderStatus(), event.items().size());
     }
 }
