@@ -15,6 +15,7 @@ import org.example.orderservice.pojo.Order;
 import org.example.orderservice.pojo.OrderItem;
 import org.example.orderservice.repository.OrderRepository;
 import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +24,10 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -33,6 +38,8 @@ public class OrderServiceImpl implements OrderService {
     private final ModelMapper modelMapper;
     private final KafkaTemplate<String, OrderPlacedEvent> kafkaTemplate;
     private final EcommClient ecommClient;
+    @Qualifier("inventoryReservationExecutor")
+    private final Executor inventoryReservationExecutor;
 
     @Transactional
     @Override
@@ -74,18 +81,43 @@ public class OrderServiceImpl implements OrderService {
         return order;
     }
 
-    // Reserves inventory sequentially (one item at a time) rather than in parallel so that,
-    // on partial failure, `reservedItems` is exactly the prefix that succeeded - this is what
-    // makes precise compensation possible.
+    // Reserves inventory for every cart item in parallel on a bounded pool, since each call is
+    // a network round-trip to the ecomm service. Concurrent calls can finish in any order, so
+    // `reservedItems` can no longer be assumed to be "the prefix that succeeded" (as it was when
+    // this ran sequentially) - it is instead built from whichever futures actually completed
+    // successfully, which is still exactly the set that needs compensating on partial failure.
+    // All futures are awaited even after the first failure, since calls already in flight can't
+    // be cancelled mid-RPC and every successful one still needs to be recorded for rollback.
     private List<OrderItem> reserveInventoryAndBuildOrderItems(Order order, CartCheckoutResponse cart,
                                                                 List<CartCheckoutItemResponse> reservedItems) {
-        List<OrderItem> orderItems = new ArrayList<>();
-        for (CartCheckoutItemResponse item : cart.getItems()) {
-            ecommClient.decreaseInventory(item.getProductId(), item.getQuantity());
-            reservedItems.add(item);
-            orderItems.add(new OrderItem(order, item.getProductId(), item.getProductName(), item.getQuantity(), item.getUnitPrice()));
+        List<CartCheckoutItemResponse> items = cart.getItems();
+        List<CompletableFuture<CartCheckoutItemResponse>> futures = items.stream()
+                .map(item -> CompletableFuture.supplyAsync(() -> {
+                    ecommClient.decreaseInventory(item.getProductId(), item.getQuantity());
+                    return item;
+                }, inventoryReservationExecutor))
+                .collect(Collectors.toList());
+
+        RuntimeException firstFailure = null;
+        for (CompletableFuture<CartCheckoutItemResponse> future : futures) {
+            try {
+                reservedItems.add(future.join());
+            } catch (CompletionException ex) {
+                if (firstFailure == null) {
+                    Throwable cause = ex.getCause();
+                    firstFailure = cause instanceof RuntimeException runtimeCause
+                            ? runtimeCause
+                            : new OrderPlacementFailedException("Inventory reservation failed", cause);
+                }
+            }
         }
-        return orderItems;
+        if (firstFailure != null) {
+            throw firstFailure;
+        }
+
+        return items.stream()
+                .map(item -> new OrderItem(order, item.getProductId(), item.getProductName(), item.getQuantity(), item.getUnitPrice()))
+                .collect(Collectors.toList());
     }
 
     // Compensating step of the saga: undo inventory reservations already confirmed
